@@ -1,0 +1,3 @@
+[submodule "app/src/main/cpp/external/StereoKit"]
+	path = app/src/main/cpp/external/StereoKit
+	url = git@github.com:StereoKit/StereoKit.git
