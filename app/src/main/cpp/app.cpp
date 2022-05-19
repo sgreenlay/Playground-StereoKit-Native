@@ -12,8 +12,6 @@ using namespace sk;
 using namespace facebook::jsi;
 using namespace facebook::jsc;
 
-mesh_t mesh;
-material_t mat;
 std::unique_ptr<Runtime> rt;
 
 // https://codereview.stackexchange.com/questions/261326/custom-uuid-implementation-on-c
@@ -34,8 +32,48 @@ static std::string generate_uuid(size_t len)
     return uuid;
 }
 
+class SKColor : public HostObject {
+    Value get(Runtime& rt, const PropNameID& sym) override {
+        return Value::undefined();
+    }
+
+    void set(Runtime& rt, const PropNameID& sym, const Value& val) override {
+        auto propertyName = sym.utf8(rt);
+        if (propertyName == "r") {
+            r = val.getNumber();
+            updateMaterial = true;
+        } else if (propertyName == "g") {
+            g = val.getNumber();
+            updateMaterial = true;
+        } else if (propertyName == "b") {
+            b = val.getNumber();
+            updateMaterial = true;
+        } else if (propertyName == "a") {
+            a = val.getNumber();
+            updateMaterial = true;
+        }
+    }
+
+    bool updateMaterial = false;
+    double r, g, b, a = 1.0f;
+    material_t mat = material_copy(material_find(default_id_material));
+
+public:
+    material_t material() {
+        if (updateMaterial) {
+            material_set_color(mat, "color", { (float)r, (float)g, (float)b, (float)a });
+            updateMaterial = false;
+        }
+        return mat;
+    }
+};
+
 class SKCube : public HostObject {
     Value get(Runtime& rt, const PropNameID& sym) override {
+        auto propertyName = sym.utf8(rt);
+        if (propertyName == "color" || propertyName == "colour") {
+            return Object::createFromHostObject(rt, colour);
+        }
         return Value::undefined();
     }
 
@@ -47,12 +85,18 @@ class SKCube : public HostObject {
             pose.position.y = val.getNumber();
         } else if (propertyName == "z") {
             pose.position.z = val.getNumber();
+        } else if (propertyName == "scale") {
+            scale = val.getNumber();
         }
     }
 
 public:
     std::string id = generate_uuid(14);
+
+    mesh_t mesh = mesh_find(default_id_mesh_cube);
     pose_t pose = {vec3{0, 0, 0}, quat_identity};
+    double scale = 1.0;
+    std::shared_ptr<SKColor> colour = std::make_shared<SKColor>();
 };
 
 std::vector<std::shared_ptr<SKCube>> cubes;
@@ -99,9 +143,6 @@ bool app_init(struct android_app *state)
         return false;
     }
 
-    mesh = mesh_find(default_id_mesh_cube);
-    mat = material_find(default_id_material);
-
     rt = makeJSCRuntime();
 
     auto bridge = Object::createFromHostObject(*rt, std::make_shared<SKBridgeObject>());
@@ -110,14 +151,26 @@ bool app_init(struct android_app *state)
     const char * script1 = R"(
         var a = stereokit.createCube();
         a.z = -2.0;
+        a.scale = 0.1;
+        a.colour.r = 1.0;
+        a.colour.g = 0.0;
+        a.colour.b = 0.0;
 
         var b = stereokit.createCube();
         b.x = -1.2;
         b.z = -2.0;
+        b.scale = 0.15;
+        b.colour.r = 0.0;
+        b.colour.g = 1.0;
+        b.colour.b = 0.0;
 
         var c = stereokit.createCube();
         c.x = 1.2;
         c.z = -2.0;
+        c.scale = 0.2;
+        c.colour.r = 0.0;
+        c.colour.g = 0.0;
+        c.colour.b = 1.0;
     )";
     rt->evaluateJavaScript(std::make_unique<StringBuffer>(script1), "");
 
@@ -143,8 +196,11 @@ void app_step()
 {
     sk_step([]() {
         for (auto&& cube : cubes) {
-            ui_handle_begin(cube->id.c_str(), cube->pose, mesh_get_bounds(mesh), false);
-            render_add_mesh(mesh, mat, matrix_identity);
+            auto bounds = mesh_get_bounds(cube->mesh);
+            bounds.center *= cube->scale;
+            bounds.dimensions *= cube->scale;
+            ui_handle_begin(cube->id.c_str(), cube->pose, bounds, false);
+            render_add_mesh(cube->mesh, cube->colour->material(), matrix_trs(vec3_zero, quat_identity, vec3_one*cube->scale));
             ui_handle_end();
         }
     });
