@@ -4,6 +4,8 @@
 #include <JSCRuntime.h>
 #include <jsi/jsi.h>
 
+#include <random>
+
 #include <android/log.h>
 
 using namespace sk;
@@ -13,6 +15,24 @@ using namespace facebook::jsc;
 mesh_t mesh;
 material_t mat;
 std::unique_ptr<Runtime> rt;
+
+// https://codereview.stackexchange.com/questions/261326/custom-uuid-implementation-on-c
+static std::string generate_uuid(size_t len)
+{
+    static const char x[] = "0123456789abcdef";
+
+    std::string uuid;
+    uuid.reserve(len);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<> dis(0, sizeof(x) - 2);
+    for (size_t i = 0; i < len; i++)
+        uuid += x[dis(gen)];
+
+    return uuid;
+}
 
 class SKCube : public HostObject {
     Value get(Runtime& rt, const PropNameID& sym) override {
@@ -31,6 +51,7 @@ class SKCube : public HostObject {
     }
 
 public:
+    std::string id = generate_uuid(14);
     pose_t pose = {vec3{0, 0, 0}, quat_identity};
 };
 
@@ -122,7 +143,7 @@ void app_step()
 {
     sk_step([]() {
         for (auto&& cube : cubes) {
-            ui_handle_begin("Cube", cube->pose, mesh_get_bounds(mesh), false);
+            ui_handle_begin(cube->id.c_str(), cube->pose, mesh_get_bounds(mesh), false);
             render_add_mesh(mesh, mat, matrix_identity);
             ui_handle_end();
         }
