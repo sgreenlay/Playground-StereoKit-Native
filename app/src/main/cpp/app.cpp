@@ -12,8 +12,55 @@ using namespace facebook::jsc;
 
 mesh_t mesh;
 material_t mat;
-pose_t pose = {vec3{0, 0, -2.0f}, quat_identity};
 std::unique_ptr<Runtime> rt;
+
+class SKCube : public HostObject {
+    Value get(Runtime& rt, const PropNameID& sym) override {
+        return Value::undefined();
+    }
+
+    void set(Runtime& rt, const PropNameID& sym, const Value& val) override {
+        auto propertyName = sym.utf8(rt);
+        if (propertyName == "x") {
+            pose.position.x = val.getNumber();
+        } else if (propertyName == "y") {
+            pose.position.y = val.getNumber();
+        } else if (propertyName == "z") {
+            pose.position.z = val.getNumber();
+        }
+    }
+
+public:
+    pose_t pose = {vec3{0, 0, 0}, quat_identity};
+};
+
+std::vector<std::shared_ptr<SKCube>> cubes;
+
+class SKBridgeObject : public HostObject {
+    Value get(Runtime& rt, const PropNameID& sym) override {
+        auto propertyName = sym.utf8(rt);
+        if (propertyName == "createCube") {
+            return Function::createFromHostFunction(
+                rt,
+                sym,
+                0,
+                [](Runtime &rt,
+                    Value const &thisValue,
+                    Value const *arguments,
+                    size_t count) noexcept -> Value {
+                    auto cube = std::make_shared<SKCube>();
+                    cubes.push_back(cube);
+                    return Object::createFromHostObject(rt, cube);
+                }
+            );
+        }
+        return Value::undefined();
+    }
+
+    void set(Runtime&, const PropNameID&, const Value&) override {
+        // TODO
+    }
+};
 
 bool app_init(struct android_app *state)
 {
@@ -36,16 +83,22 @@ bool app_init(struct android_app *state)
 
     rt = makeJSCRuntime();
 
-    const char * script = R""""(
-        var str = "";
-        for (var i = 0; i < 10; ++i) {
-            str += i + " ";
-        }
-        str
-    )"""";
-    auto v = rt->evaluateJavaScript(std::make_unique<StringBuffer>(script), "");
-    auto result = v.getString(*rt).utf8(*rt);
-    __android_log_print(ANDROID_LOG_DEBUG, "SKPlayground", "JSResult: %s", result.c_str());
+    auto bridge = Object::createFromHostObject(*rt, std::make_shared<SKBridgeObject>());
+    rt->global().setProperty(*rt, "stereokit", bridge);
+
+    const char * script1 = R"(
+        var a = stereokit.createCube();
+        a.z = -2.0;
+
+        var b = stereokit.createCube();
+        b.x = -1.2;
+        b.z = -2.0;
+
+        var c = stereokit.createCube();
+        c.x = 1.2;
+        c.z = -2.0;
+    )";
+    rt->evaluateJavaScript(std::make_unique<StringBuffer>(script1), "");
 
     return true;
 }
@@ -68,9 +121,11 @@ void app_handle_cmd(android_app *evt_app, int32_t cmd)
 void app_step()
 {
     sk_step([]() {
-        ui_handle_begin("Object", pose, mesh_get_bounds(mesh), false);
-        render_add_mesh(mesh, mat, matrix_identity);
-        ui_handle_end();
+        for (auto&& cube : cubes) {
+            ui_handle_begin("Cube", cube->pose, mesh_get_bounds(mesh), false);
+            render_add_mesh(mesh, mat, matrix_identity);
+            ui_handle_end();
+        }
     });
 }
 
