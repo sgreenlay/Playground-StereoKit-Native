@@ -1,11 +1,19 @@
 #include <stereokit.h>
 #include <stereokit_ui.h>
 
-using namespace sk;
+#include <JSCRuntime.h>
+#include <jsi/jsi.h>
 
-mesh_t sphere_mesh;
-material_t sphere_mat;
-pose_t sphere_pose = {vec3{0, 0, -2.0f}, quat_identity};
+#include <android/log.h>
+
+using namespace sk;
+using namespace facebook::jsi;
+using namespace facebook::jsc;
+
+mesh_t mesh;
+material_t mat;
+pose_t pose = {vec3{0, 0, -2.0f}, quat_identity};
+std::unique_ptr<Runtime> rt;
 
 bool app_init(struct android_app *state)
 {
@@ -23,8 +31,21 @@ bool app_init(struct android_app *state)
         return false;
     }
 
-    sphere_mesh = mesh_find(default_id_mesh_sphere);
-    sphere_mat = material_find(default_id_material);
+    mesh = mesh_find(default_id_mesh_cube);
+    mat = material_find(default_id_material);
+
+    rt = makeJSCRuntime();
+
+    const char * script = R""""(
+        var str = "";
+        for (var i = 0; i < 10; ++i) {
+            str += i + " ";
+        }
+        str
+    )"""";
+    auto v = rt->evaluateJavaScript(std::make_unique<StringBuffer>(script), "");
+    auto result = v.getString(*rt).utf8(*rt);
+    __android_log_print(ANDROID_LOG_DEBUG, "SKPlayground", "JSResult: %s", result.c_str());
 
     return true;
 }
@@ -47,8 +68,8 @@ void app_handle_cmd(android_app *evt_app, int32_t cmd)
 void app_step()
 {
     sk_step([]() {
-        ui_handle_begin("Sphere", sphere_pose, mesh_get_bounds(sphere_mesh), false);
-        render_add_mesh(sphere_mesh, sphere_mat, matrix_identity);
+        ui_handle_begin("Object", pose, mesh_get_bounds(mesh), false);
+        render_add_mesh(mesh, mat, matrix_identity);
         ui_handle_end();
     });
 }

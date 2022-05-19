@@ -22,6 +22,16 @@ target_link_libraries(stereokitc
     openxr_loader
     reactphysics3d)
 
+add_library(jsc SHARED IMPORTED)
+set_target_properties(jsc PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/external/JavascriptCore/bin/${ANDROID_ABI}/libjsc.so)
+set_target_properties(jsc PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/external/JavascriptCore/include)
+
+file(GLOB_RECURSE JSI_SRCS ${CMAKE_SOURCE_DIR}/external/jsi/*.cpp)
+add_library(jsi STATIC ${JSI_SRCS})
+set_target_properties(jsi PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/external/jsi)
+target_include_directories(jsi PUBLIC ${CMAKE_SOURCE_DIR}/external/jsi)
+target_link_libraries(jsi jsc)
+
 add_library(native_app_glue STATIC ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
 set_target_properties(native_app_glue PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${ANDROID_NDK}/sources/android/native_app_glue)
 
@@ -36,4 +46,5 @@ target_link_libraries(native-activity
     EGL
     GLESv1_CM
     log
-    stereokitc)
+    stereokitc
+    jsi)
